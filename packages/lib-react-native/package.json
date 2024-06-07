@@ -1,0 +1,21 @@
+{
+  "name": "@powerauth/lib-react-native",
+  "description": "React native specific implementations for PowerAuthenticator.",
+  "version": "1.0.0",
+  "dependencies": {
+    "react-native-get-random-values": "~1.8.0",
+    "crypto-js": "^4.2.0",
+    "react-native-crypto": "^2.2.0",
+    "react-native-crypto-js": "^1.0.0",
+    "react-native-aes-crypto": "^3.0.1",
+    "react-native-rsa-native": "^2.0.5",
+    "expo-secure-store": "~12.8.1",
+    "uuid": "^9.0.1",
+    "@powerauth/lib-contracts": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/react-native-get-random-values": "^1.8.2",
+    "@types/react-native-crypto-js": "^1.0.3",
+    "@types/crypto-js": "^4.2.2"
+  }
+}

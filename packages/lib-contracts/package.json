@@ -1,0 +1,5 @@
+{
+  "name": "@powerauth/lib-contracts",
+  "description": "Defines the contracts and shared models for PowerAuthenticator",
+  "version": "1.0.0"
+}

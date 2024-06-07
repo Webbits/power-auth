@@ -1,0 +1,10 @@
+{
+  "name": "@powerauth/lib-testing",
+  "description": "Testing helpers for PowerAuthenticator",
+  "version": "1.0.0",
+  "dependencies": {
+    "@powerauth/lib-contracts": "1.0.0"
+  },
+  "devDependencies": {
+  }
+}
