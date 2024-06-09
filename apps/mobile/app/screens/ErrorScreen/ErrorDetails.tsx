@@ -29,7 +29,7 @@ export function ErrorDetails(props: ErrorDetailsProps) {
       </View>
 
       <ScrollView style={$errorSection} contentContainerStyle={$errorSectionContentContainer}>
-        <Text style={$errorContent} weight={"medium"} text={`${props.error}`.trim()} />
+        <Text style={$errorContent} text={`${props.error}`.trim()} />
         <Text
           selectable
           style={$errorBacktrace}
