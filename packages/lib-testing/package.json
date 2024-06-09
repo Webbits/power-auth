@@ -6,5 +6,6 @@
     "@powerauth/lib-contracts": "1.0.0"
   },
   "devDependencies": {
+    "@faker-js/faker": "^8.4.1"
   }
 }

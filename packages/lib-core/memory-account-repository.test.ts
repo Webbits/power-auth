@@ -1,5 +1,5 @@
 import { MemoryAccountRepository } from "./memory-account-repository";
-import { Account } from "@powerauth/lib-contracts/";
+import Account from "@powerauth/lib-contracts/models/account";
 
 const googleAccount: Account = {
   id: "ddbbee85-4a3a-4452-afe1-c0a1074c0ef0",

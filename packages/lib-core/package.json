@@ -2,6 +2,9 @@
   "name": "@powerauth/lib-core",
   "description": "Main PowerAuthenticator packages containing the implementations.",
   "version": "1.0.0",
+  "scripts": {
+    "test": "TZ=UTC jest"
+  },
   "dependencies": {
     "@powerauth/lib-contracts": "1.0.0",
     "webdav": "^5.5.0"

@@ -1,12 +1,18 @@
 import {
   BackendDefaultPaths,
   BackendStoredBackendInfo,
+  BackendStoredDeviceInfo,
+  BackendStoredSharedSecret,
   PowerAuthBackend,
 } from "./power-auth-backend";
 import { MockCloudStorage } from "@powerauth/lib-testing/mock-cloud-storage";
 import { MockEncryption } from "@powerauth/lib-testing/mock-encryption";
 import MemoryCache from "./memory-cache";
 import { Device, DevicePlatform } from "@powerauth/lib-contracts/models/device";
+import {
+  createCloudStorageWithOneDeviceBackend,
+  createRandomDevice,
+} from "@powerauth/lib-testing/factories/backend-factory";
 
 test("it will create a new backend when none exists", async () => {
   const device: Device = {
@@ -20,19 +26,87 @@ test("it will create a new backend when none exists", async () => {
     },
   };
   const mockCloudStorage = new MockCloudStorage();
+  const mockEncryption = new MockEncryption();
 
   const backend = new PowerAuthBackend(
     mockCloudStorage,
-    new MockEncryption(),
+    mockEncryption,
     new MemoryCache(),
     device
   );
 
   await backend.initAsync();
 
-  const storedInfo = mockCloudStorage.getAsync<BackendStoredBackendInfo>(
-    BackendDefaultPaths.backendInfoFile
+  // Assert that it created the backend info file
+  const storedBackendInfo =
+    await mockCloudStorage.getAsync<BackendStoredBackendInfo>(
+      BackendDefaultPaths.backendInfoFile
+    );
+  expect(storedBackendInfo.id).toBeDefined();
+  expect(storedBackendInfo.createdAt).toBeDefined();
+
+  const nowSeconds = new Date().getTime() / 1000;
+  const secondsSinceCreatedAt =
+    nowSeconds - new Date(storedBackendInfo.createdAt).getTime() / 1000;
+
+  expect(secondsSinceCreatedAt).toBeLessThan(5);
+
+  // Assert that it created the device file on the backend
+  const deviceInfoFile =
+    await mockCloudStorage.getAsync<BackendStoredDeviceInfo>(
+      BackendDefaultPaths.deviceInfoFile(device.id)
+    );
+
+  expect(deviceInfoFile).toBeDefined();
+  expect(deviceInfoFile.id).toEqual(device.id);
+  expect(deviceInfoFile.name).toEqual(device.name);
+  expect(deviceInfoFile.publicKey).toEqual(device.keyPair.publicKey);
+  expect(deviceInfoFile.sharedSignature).toEqual(
+    "[signed-symmetric]" + device.keyPair.publicKey
+  );
+  expect(deviceInfoFile.platform).toEqual(device.platform.toString());
+  expect(deviceInfoFile.createdAt).toBeDefined();
+  expect(deviceInfoFile.createdAt).toEqual(deviceInfoFile.updatedAt);
+  expect(deviceInfoFile.version).toEqual(device.version);
+
+  // Assert that a shared secret has been created
+  const sharedSecretEncrypted = await mockCloudStorage.getAsync<string>(
+    BackendDefaultPaths.deviceSharedSecretFile(device.id)
+  );
+  const sharedSecretFileString = await mockEncryption.decryptAsymmetricAsync(
+    sharedSecretEncrypted,
+    device.keyPair.privateKey
+  );
+  const sharedSecretFile = JSON.parse(
+    sharedSecretFileString
+  ) as BackendStoredSharedSecret;
+
+  expect(sharedSecretFile.key).toBe("symmetrickey");
+  expect(sharedSecretFile.iv).toBe("symmetrickey");
+  expect(sharedSecretFile.backendId).toBe(storedBackendInfo.id);
+});
+
+test("it will work with an already existing backend and a new device", async () => {
+  const { storage, deviceOnBackend } =
+    await createCloudStorageWithOneDeviceBackend();
+  const mockEncryption = new MockEncryption();
+
+  const device = createRandomDevice();
+
+  const backend = new PowerAuthBackend(
+    storage,
+    mockEncryption,
+    new MemoryCache(),
+    device
   );
 
-  expect(storedInfo).toBeDefined();
+  await backend.initAsync();
+
+  expect(backend.deviceIsJoined).toBe(false);
 });
+
+test("it will fail when the backend id does not match the backend id in the shared secret", () => {});
+
+test("it can create a new join request", () => {});
+
+test("it will fail when the local device data does not match the backend device data", () => {});
