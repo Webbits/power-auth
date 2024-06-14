@@ -10,9 +10,10 @@ import { MockEncryption } from "@powerauth/lib-testing/mock-encryption";
 import MemoryCache from "./memory-cache";
 import { Device, DevicePlatform } from "@powerauth/lib-contracts/models/device";
 import {
-  createCloudStorageWithOneDeviceBackend,
+  createBackendWithExistingDevice,
   createRandomDevice,
 } from "@powerauth/lib-testing/factories/backend-factory";
+import { secondsDiff } from "@powerauth/lib-testing/utils/datetime";
 
 test("it will create a new backend when none exists", async () => {
   const device: Device = {
@@ -45,11 +46,7 @@ test("it will create a new backend when none exists", async () => {
   expect(storedBackendInfo.id).toBeDefined();
   expect(storedBackendInfo.createdAt).toBeDefined();
 
-  const nowSeconds = new Date().getTime() / 1000;
-  const secondsSinceCreatedAt =
-    nowSeconds - new Date(storedBackendInfo.createdAt).getTime() / 1000;
-
-  expect(secondsSinceCreatedAt).toBeLessThan(5);
+  expect(secondsDiff(storedBackendInfo.createdAt)).toBeLessThan(5);
 
   // Assert that it created the device file on the backend
   const deviceInfoFile =
@@ -86,27 +83,53 @@ test("it will create a new backend when none exists", async () => {
   expect(sharedSecretFile.backendId).toBe(storedBackendInfo.id);
 });
 
-test("it will work with an already existing backend and a new device", async () => {
-  const { storage, deviceOnBackend } =
-    await createCloudStorageWithOneDeviceBackend();
-  const mockEncryption = new MockEncryption();
-
-  const device = createRandomDevice();
-
-  const backend = new PowerAuthBackend(
-    storage,
-    mockEncryption,
-    new MemoryCache(),
-    device
+test("it will work with an already existing backend and a new device but the device won't be joined yet", async () => {
+  const { backend } = await createBackendWithExistingDevice(
+    createRandomDevice()
   );
 
   await backend.initAsync();
 
-  expect(backend.deviceIsJoined).toBe(false);
+  expect(backend.isInitialized()).toBe(true);
+  expect(backend.clientDeviceIsJoined).toBe(false);
 });
 
 test("it will fail when the backend id does not match the backend id in the shared secret", () => {});
 
-test("it can create a new join request", () => {});
+test("it can create a new join request", async () => {
+  const newDevice: Device = {
+    ...createRandomDevice(),
+    keyPair: {
+      privateKey: "privatekey",
+      publicKey: "thepublickey",
+    },
+  };
+
+  const { backend } = await createBackendWithExistingDevice(newDevice);
+
+  await backend.initAsync();
+  await backend.requestToJoinAsync();
+
+  const joinRequestFile =
+    await backend.storage.getAsync<BackendStoredDeviceInfo>(
+      backend.storagePaths.deviceJoinRequestFile(newDevice.id)
+    );
+
+  expect(joinRequestFile).toBeDefined();
+  expect(joinRequestFile.name).toEqual(newDevice.name);
+  expect(secondsDiff(joinRequestFile.createdAt)).toBeLessThan(1);
+  expect(secondsDiff(joinRequestFile.updatedAt)).toBeLessThan(1);
+  expect(joinRequestFile.sharedSignature).toHaveLength(0);
+  expect(joinRequestFile.publicKey).toBe("thepublickey");
+
+  const joinRequestDevices = await backend.getJoinRequestDevicesAsync();
+
+  expect(joinRequestDevices).toHaveLength(1);
+  expect(joinRequestDevices[0].isTrusted).toBe(false);
+});
+
+test("it can join a new device by accepting a join request", () => {});
+
+test("it can remove a join request", () => {});
 
 test("it will fail when the local device data does not match the backend device data", () => {});

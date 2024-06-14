@@ -3,10 +3,13 @@ import { MockCloudStorage } from "../mock-cloud-storage";
 import {
   BackendDefaultPaths,
   BackendStoredBackendInfo,
+  PowerAuthBackend,
 } from "@powerauth/lib-core/power-auth-backend";
 import { Device, DevicePlatform } from "@powerauth/lib-contracts/models/device";
 import { createUnsafeUuid } from "../utils/uuid";
 import { faker } from "@faker-js/faker";
+import { MockEncryption } from "../mock-encryption";
+import MemoryCache from "@powerauth/lib-core/memory-cache";
 
 export const createCloudStorageWithOneDeviceBackend = async (): Promise<{
   storage: ICloudStorage;
@@ -58,5 +61,28 @@ export const createRandomDevice = (): Device => {
       privateKey: "privkey",
       publicKey: "pubkey",
     },
+  };
+};
+
+export const createBackendWithExistingDevice = async (
+  localDevice: Device
+): Promise<{
+  backend: PowerAuthBackend;
+  deviceOnBackend: Device;
+}> => {
+  const { storage, deviceOnBackend } =
+    await createCloudStorageWithOneDeviceBackend();
+  const mockEncryption = new MockEncryption();
+
+  const backend = new PowerAuthBackend(
+    storage,
+    mockEncryption,
+    new MemoryCache(),
+    localDevice
+  );
+
+  return {
+    backend,
+    deviceOnBackend,
   };
 };

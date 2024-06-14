@@ -5,7 +5,7 @@ import { SharedSecret } from "./models/sharedSecret";
 export interface IPowerAuthBackend {
   initAsync(): Promise<void>;
 
-  updateDeviceInfoAsync(): Promise<void>;
+  updateClientDeviceInfoAsync(): Promise<void>;
 
   getDevicesAsync(): Promise<BackendDevice[]>;
 
@@ -24,4 +24,6 @@ export interface IPowerAuthBackend {
   removeAccountAsync(id: string): Promise<void>;
 
   getSharedSecret(): Promise<SharedSecret | null>;
+
+  isInitialized(): boolean;
 }

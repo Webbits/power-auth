@@ -7,6 +7,7 @@ import { BackendDevice } from "@powerauth/lib-contracts/models/backendDevice";
 import { SharedSecret } from "@powerauth/lib-contracts/models/sharedSecret";
 import IAccountsRepository from "@powerauth/lib-contracts/IAccountsRepository";
 import { MemoryAccountRepository } from "./memory-account-repository";
+import { IPowerAuthBackend } from "packages/lib-contracts/IPowerAuthBackend";
 
 export interface BackendStoredDeviceInfo {
   id: string;
@@ -88,7 +89,7 @@ interface BackendOptions {
   storagePaths?: IStoragePaths;
 }
 
-export class PowerAuthBackend {
+export class PowerAuthBackend implements IPowerAuthBackend {
   storage: ICloudStorage;
   storagePaths: IStoragePaths;
   cache: ICache;
@@ -98,8 +99,8 @@ export class PowerAuthBackend {
 
   backendInfo?: BackendStoredBackendInfo;
 
-  deviceIsJoined: boolean;
-  device: Device;
+  clientDeviceIsJoined: boolean;
+  clientDevice: Device;
 
   sharedSecret?: SharedSecret;
 
@@ -107,7 +108,7 @@ export class PowerAuthBackend {
     storage: ICloudStorage,
     encryption: IEncryption,
     cache: ICache,
-    device: Device,
+    clientDevice: Device,
     options?: BackendOptions
   ) {
     this.storage = storage;
@@ -118,8 +119,8 @@ export class PowerAuthBackend {
       ...(options?.storagePaths ?? {}),
     };
 
-    this.deviceIsJoined = false;
-    this.device = device;
+    this.clientDeviceIsJoined = false;
+    this.clientDevice = clientDevice;
 
     this.storage.setRootPath(this.storagePaths.root);
 
@@ -136,6 +137,10 @@ export class PowerAuthBackend {
     return backendInfo !== null;
   }
 
+  isInitialized(): boolean {
+    return this.backendInfo !== null;
+  }
+
   async initAsync(): Promise<void> {
     const backendInfo = await this.storage.getAsync<BackendStoredBackendInfo>(
       this.storagePaths.backendInfoFile
@@ -146,12 +151,12 @@ export class PowerAuthBackend {
       return;
     }
 
-    this.deviceIsJoined = await this.storage.existsAsync(
-      this.storagePaths.deviceFolder(this.device.id)
+    this.clientDeviceIsJoined = await this.storage.existsAsync(
+      this.storagePaths.deviceFolder(this.clientDevice.id)
     );
 
-    if (this.deviceIsJoined) {
-      await this.updateDeviceInfoAsync();
+    if (this.clientDeviceIsJoined) {
+      await this.updateClientDeviceInfoAsync();
       this.sharedSecret = (await this.getSharedSecret()) ?? undefined;
     }
   }
@@ -170,16 +175,15 @@ export class PowerAuthBackend {
       iv: await this.encryption.generateSymmetricKeyAsync(16),
     };
 
-    console.log("initializing new backed with device", this.device);
     const deviceInfo: BackendStoredDeviceInfo = {
-      id: this.device.id,
-      name: this.device.name,
-      version: this.device.version,
-      platform: this.device.platform,
-      publicKey: this.device.keyPair.publicKey,
+      id: this.clientDevice.id,
+      name: this.clientDevice.name,
+      version: this.clientDevice.version,
+      platform: this.clientDevice.platform,
+      publicKey: this.clientDevice.keyPair.publicKey,
       sharedSignature: await this.encryption.signSymmetricAsync(
         sharedSecret.key,
-        this.device.keyPair.publicKey
+        this.clientDevice.keyPair.publicKey
       ),
       createdAt: now,
       updatedAt: now,
@@ -189,40 +193,40 @@ export class PowerAuthBackend {
 
     const encryptedSharedSecret = await this.encryption.encryptAsymmetricAsync(
       JSON.stringify(sharedSecret),
-      this.device.keyPair.publicKey
+      this.clientDevice.keyPair.publicKey
     );
 
     await this.storage.setAsync(
-      this.storagePaths.deviceInfoFile(this.device.id),
+      this.storagePaths.deviceInfoFile(this.clientDevice.id),
       deviceInfo
     );
     await this.storage.setAsync(this.storagePaths.backendInfoFile, backendInfo);
     await this.storage.setAsync(
-      this.storagePaths.deviceSharedSecretFile(this.device.id),
+      this.storagePaths.deviceSharedSecretFile(this.clientDevice.id),
       encryptedSharedSecret
     );
 
-    this.deviceIsJoined = true;
+    this.clientDeviceIsJoined = true;
     this.backendInfo = backendInfo;
   }
 
-  async updateDeviceInfoAsync(): Promise<void> {
+  async updateClientDeviceInfoAsync(): Promise<void> {
     let deviceInfo = await this.storage.getAsync<BackendStoredDeviceInfo>(
-      this.storagePaths.deviceInfoFile(this.device.id)
+      this.storagePaths.deviceInfoFile(this.clientDevice.id)
     );
 
     if (deviceInfo === null) return;
 
     deviceInfo = {
       ...deviceInfo,
-      name: this.device.name,
-      version: this.device.version,
-      platform: this.device.platform,
+      name: this.clientDevice.name,
+      version: this.clientDevice.version,
+      platform: this.clientDevice.platform,
       updatedAt: new Date().toUTCString(),
     };
 
     await this.storage.setAsync(
-      this.storagePaths.deviceInfoFile(this.device.id),
+      this.storagePaths.deviceInfoFile(this.clientDevice.id),
       deviceInfo
     );
   }
@@ -286,6 +290,7 @@ export class PowerAuthBackend {
     const cache = await this.cache.getAsync<BackendDevice[]>(
       CACHE_KEYS.JOIN_REQUESTS
     );
+
     if (cache !== null) return cache;
 
     const joinRequestPaths = await this.storage.lsAsync(
@@ -317,21 +322,25 @@ export class PowerAuthBackend {
   }
 
   requestToJoinAsync(): Promise<void> {
+    if (this.clientDeviceIsJoined) {
+      throw new Error("Already joined");
+    }
+
     const now = new Date().toUTCString();
 
     const storedDeviceInfo: BackendStoredDeviceInfo = {
-      id: this.device.id,
-      name: this.device.name,
-      version: this.device.version,
-      platform: this.device.platform,
-      publicKey: this.device.keyPair.publicKey,
+      id: this.clientDevice.id,
+      name: this.clientDevice.name,
+      version: this.clientDevice.version,
+      platform: this.clientDevice.platform,
+      publicKey: this.clientDevice.keyPair.publicKey,
       sharedSignature: "", // Requesting device does not have a signature as it is not trusted yet
       createdAt: now,
       updatedAt: now,
     };
 
     return this.storage.setAsync(
-      this.storagePaths.deviceJoinRequestFile(this.device.id),
+      this.storagePaths.deviceJoinRequestFile(this.clientDevice.id),
       storedDeviceInfo
     );
   }
@@ -389,7 +398,7 @@ export class PowerAuthBackend {
   }
 
   async getAccountsAsync(): Promise<Account[]> {
-    if (!this.deviceIsJoined) throw new Error("Device is not joined");
+    if (!this.clientDeviceIsJoined) throw new Error("Device is not joined");
     if (!this.sharedSecret)
       throw new Error("Can not get accounts without shared secret");
 
@@ -443,7 +452,7 @@ export class PowerAuthBackend {
 
         // If the decrypted secret does not match the account info, the account is not shared with the device
         if (
-          decryptedSecret.deviceId !== this.device.id ||
+          decryptedSecret.deviceId !== this.clientDevice.id ||
           decryptedSecret.id !== accountInfo.id
         ) {
           return account;
@@ -461,7 +470,7 @@ export class PowerAuthBackend {
   }
 
   async addAccountAsync(account: Account): Promise<void> {
-    if (!this.deviceIsJoined) throw new Error("Device is not joined");
+    if (!this.clientDeviceIsJoined) throw new Error("Device is not joined");
     if (!this.sharedSecret)
       throw new Error("Can not add account without shared secret");
     if (!account.secret) throw new Error("Account secret is not set");
@@ -512,7 +521,7 @@ export class PowerAuthBackend {
   }
 
   async removeAccountAsync(id: string): Promise<void> {
-    if (!this.deviceIsJoined) throw new Error("Device is not joined");
+    if (!this.clientDeviceIsJoined) throw new Error("Device is not joined");
     if (!this.sharedSecret)
       throw new Error("Can not remove account without shared secret");
 
@@ -523,7 +532,7 @@ export class PowerAuthBackend {
 
   async getSharedSecret(): Promise<SharedSecret | null> {
     const encryptedSharedSecretString = await this.storage.getRawAsync(
-      this.storagePaths.deviceSharedSecretFile(this.device.id)
+      this.storagePaths.deviceSharedSecretFile(this.clientDevice.id)
     );
 
     // If the shared secret is not found, the device is not trusted
@@ -533,7 +542,7 @@ export class PowerAuthBackend {
       const decryptedSharedSecretString =
         await this.encryption.decryptAsymmetricAsync(
           encryptedSharedSecretString,
-          this.device.keyPair.privateKey
+          this.clientDevice.keyPair.privateKey
         );
       const decryptedSharedSecret = JSON.parse(
         decryptedSharedSecretString
